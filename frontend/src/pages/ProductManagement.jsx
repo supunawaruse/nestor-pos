@@ -64,6 +64,17 @@ const ProductManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Basic Valuations
+    if (!formData.name.trim()) return alert("Product Name is mandatory.");
+    if (!formData.barcode.trim()) return alert("Barcode/SKU is mandatory.");
+    if (Number(formData.buying_price) < 0) return alert("Cost price cannot be negative.");
+    if (Number(formData.selling_price) < 0) return alert("Selling price cannot be negative.");
+    if (Number(formData.stock_quantity) < 0) return alert("Inventory count cannot be negative.");
+    if (Number(formData.selling_price) < Number(formData.buying_price)) {
+      if (!window.confirm("Selling price is lower than cost (Negative Profit). Proceed anyway?")) return;
+    }
+
     try {
       if (editingProduct) {
         await productApi.update(editingProduct.id, formData);
@@ -74,7 +85,7 @@ const ProductManagement = () => {
       resetForm();
       fetchProducts();
     } catch (error) {
-      alert('Error saving product');
+      alert('Error saving product. Database connection check required.');
     }
   };
 
@@ -233,7 +244,14 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-2">Watch Model Identification</label>
                     <div className="relative group">
                       <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500" size={20} />
-                      <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Rolex Submariner Date" className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none" />
+                      <input 
+                    type="text" 
+                    required
+                    value={formData.name} 
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    placeholder="e.g. Rolex Submariner Date" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none"
+                  />
                     </div>
                   </div>
 
@@ -241,8 +259,13 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-2">Manufacturer Brand</label>
                     <div className="relative group">
                       <Bookmark className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500" size={20} />
-                      <select required value={formData.brand_id} onChange={e => setFormData({ ...formData, brand_id: e.target.value })} className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none appearance-none cursor-pointer">
-                        <option value="">Select Brand</option>
+                      <select 
+                    required
+                    value={formData.brand_id} 
+                    onChange={e => setFormData({...formData, brand_id: e.target.value})}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none appearance-none"
+                  >
+      <option value="">Select Brand</option>
                         {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                       </select>
                     </div>
@@ -252,8 +275,13 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-2">Collection Class</label>
                     <div className="relative group">
                       <LayoutGrid className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-purple-500" size={20} />
-                      <select required value={formData.category_id} onChange={e => setFormData({ ...formData, category_id: e.target.value })} className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-purple-500 transition-all outline-none appearance-none cursor-pointer">
-                        <option value="">Select Category</option>
+                      <select 
+                    required
+                    value={formData.category_id} 
+                    onChange={e => setFormData({...formData, category_id: e.target.value})}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none appearance-none"
+                  >
+      <option value="">Select Category</option>
                         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
@@ -263,7 +291,7 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-3">Electronic Trace Code (Barcode)</label>
                     <div className="relative group">
                       <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500" size={20} />
-                      <input required value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })} placeholder="Scan or type unique barcode..." className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none" />
+                      <input required value={formData.barcode} onChange={e => setFormData({ ...formData, barcode: e.target.value })} placeholder="Scan or type unique barcode..." className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none" />
                     </div>
                   </div>
 
@@ -271,7 +299,15 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-2">Acquisition Unit Cost</label>
                     <div className="relative group">
                       <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-green-500" size={20} />
-                      <input required type="number" value={formData.buying_price} onChange={e => setFormData({ ...formData, buying_price: e.target.value })} placeholder="LKR Cost" className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white font-mono focus:border-green-500 transition-all outline-none" />
+                      <input 
+                    type="number" 
+                    min="0"
+                    step="0.01"
+                    value={formData.buying_price} 
+                    onChange={e => setFormData({...formData, buying_price: e.target.value})}
+                    placeholder="LKR" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none"
+                  />
                     </div>
                   </div>
 
@@ -279,7 +315,15 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-2">Point-of-Sale Pricing</label>
                     <div className="relative group">
                       <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500" size={20} />
-                      <input required type="number" value={formData.selling_price} onChange={e => setFormData({ ...formData, selling_price: e.target.value })} placeholder="LKR Selling" className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white font-mono focus:border-blue-500 transition-all outline-none" />
+                      <input 
+                    type="number" 
+                    min="0"
+                    step="0.01"
+                    value={formData.selling_price} 
+                    onChange={e => setFormData({...formData, selling_price: e.target.value})}
+                    placeholder="LKR" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none"
+                  />
                     </div>
                   </div>
 
@@ -287,7 +331,14 @@ const ProductManagement = () => {
                     <label className="text-[10px] text-gray-600 font-bold uppercase tracking-widest block mb-2">Operational Stock Reserve</label>
                     <div className="relative group">
                       <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500" size={20} />
-                      <input required type="number" value={formData.stock_quantity} onChange={e => setFormData({ ...formData, stock_quantity: e.target.value })} placeholder="Units in Reserve" className="w-full bg-gray-850 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none" />
+                      <input 
+                    type="number" 
+                    min="0"
+                    value={formData.stock_quantity} 
+                    onChange={e => setFormData({...formData, stock_quantity: e.target.value})}
+                    placeholder="e.g. 10" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none"
+                  />
                     </div>
                   </div>
                 </div>

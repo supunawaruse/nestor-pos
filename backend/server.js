@@ -409,32 +409,9 @@ app.post('/api/exchanges', async (req, res) => {
     await db.query('UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2', [qty, returned_product_id]);
     await db.query('UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2', [qty, new_product_id]);
 
-    // 3. Update the item in the ORIGINAL bill
-    // We swap the product_id, but keep the quantity. We must also update selling_price and cost_price in sale_items.
-    await db.query(`
-      UPDATE sale_items 
-      SET 
-        product_id = $1, 
-        selling_price = $2, 
-        cost_price = $3 
-      WHERE sale_id = $4 AND product_id = $5
-    `, [new_product_id, newSelling, newCost, original_sale_id, returned_product_id]);
-
-    // 4. Recalculate original sale totals
-    const { rows: updatedItems } = await db.query('SELECT * FROM sale_items WHERE sale_id = $1', [original_sale_id]);
-    const newTotalAmount = updatedItems.reduce((acc, it) => acc + (Number(it.selling_price) * it.quantity), 0);
-    const newTotalCost = updatedItems.reduce((acc, it) => acc + (Number(it.cost_price) * it.quantity), 0);
-    const newProfit = newTotalAmount - newTotalCost;
-
-    await db.query(`
-      UPDATE sales 
-      SET 
-        total_amount = $1, 
-        total_cost = $2, 
-        profit = $3,
-        status = 'Exchanged'
-      WHERE id = $4
-    `, [newTotalAmount, newTotalCost, newProfit, original_sale_id]);
+    // 3. Mark the original sale as 'Exchanged' but DON'T change its historical totals
+    // This maintains revenue integrity: Original (142k) + Correction (43k) = Total (185k)
+    await db.query(`UPDATE sales SET status = 'Exchanged' WHERE id = $1`, [original_sale_id]);
 
     // 5. Create a NEW sale record for the price difference (for the daily ledger!)
     const { rows: saleRows } = await db.query(

@@ -232,8 +232,11 @@ const PosScreen = () => {
                     <input
                       type="text"
                       value={customer.mobile}
-                      onChange={e => setCustomer({ ...customer, mobile: e.target.value })}
-                      placeholder="07x xxxxxxx"
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, ''); // Numeric only
+                        setCustomer({ ...customer, mobile: val });
+                      }}
+                      placeholder="e.g. 0771234567"
                       className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none"
                     />
                   </div>
@@ -273,7 +276,12 @@ const PosScreen = () => {
                   CANCEL
                 </button>
                 <button
-                  onClick={handleFinalCheckout}
+                  onClick={() => {
+                    if (!customer.name.trim()) return alert("Customer name is required for warranty tracking.");
+                    if (!customer.mobile.trim()) return alert("Mobile number is required for digital receipts.");
+                    if (customer.mobile.length < 9) return alert("Please enter a valid mobile number.");
+                    handleFinalCheckout();
+                  }}
                   className="flex-[2] bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
                   <CheckCircle size={24} /> CONFIRM & PRINT BILL

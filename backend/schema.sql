@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS products (
   barcode VARCHAR(50) UNIQUE NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL, -- Plaintext as requested/implied for now
+  role VARCHAR(50) NOT NULL DEFAULT 'Employee', -- 'Admin', 'Employee'
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS sales (
   id SERIAL PRIMARY KEY,
   total_amount DECIMAL(10, 2) NOT NULL,
@@ -28,6 +36,7 @@ CREATE TABLE IF NOT EXISTS sales (
   customer_mobile VARCHAR(50),
   customer_address TEXT,
   notes TEXT,
+  sold_by INT REFERENCES users(id) ON DELETE SET NULL,
   status VARCHAR(50) DEFAULT 'Completed', -- 'Completed', 'Exchanged'
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

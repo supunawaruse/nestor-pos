@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Search, Trash2, CheckCircle, Barcode, XCircle, User, Phone, MapPin, StickyNote, ClipboardList } from 'lucide-react';
-import { productApi, salesApi } from '../api';
+import { ShoppingCart, Search, Trash2, CheckCircle, Barcode, XCircle, User, Phone, MapPin, StickyNote, ClipboardList, Shield } from 'lucide-react';
+import { productApi, salesApi, userApi } from '../api';
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,9 +25,12 @@ const PosScreen = () => {
     address: '',
     notes: ''
   });
+  const [users, setUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
 
   useEffect(() => {
     fetchAllProducts();
+    fetchUsers();
     barcodeInputRef.current?.focus();
 
     const handleKeyDown = (e) => {
@@ -45,6 +48,12 @@ const PosScreen = () => {
       // Get all products once for fast local POS search
       const { data } = await productApi.getAll(1, 0, true);
       setAllProducts(data);
+    } catch (err) { console.error(err); }
+  };
+  const fetchUsers = async () => {
+    try {
+      const { data } = await userApi.getAll();
+      setUsers(data);
     } catch (err) { console.error(err); }
   };
 
@@ -161,18 +170,19 @@ const PosScreen = () => {
     try {
       const soldItems = [...cart];
       const saleData = {
-        items: soldItems.map(item => ({
-          productId: item.id,
-          quantity: item.quantity,
-          selling_price: item.selling_price,
-          cost_price: item.cost_price
+        items: cart.map(it => ({
+          productId: it.id,
+          quantity: it.quantity,
+          selling_price: it.selling_price,
+          cost_price: it.cost_price
         })),
         customer_name: customer.name,
         customer_mobile: customer.mobile,
         customer_address: customer.address,
-        notes: customer.notes
+        notes: customer.notes,
+        sold_by: selectedUserId
       };
-
+      
       const { data } = await salesApi.createSale(saleData);
       const saleId = data.saleId;
 
@@ -258,6 +268,24 @@ const PosScreen = () => {
               </div>
 
               <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] block">Sales Operative</label>
+                <div className="relative group">
+                  <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-blue-500" size={18} />
+                  <select
+                    required
+                    value={selectedUserId}
+                    onChange={e => setSelectedUserId(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-white focus:border-blue-500 transition-all outline-none appearance-none"
+                  >
+                    <option value="">Select Staff Member</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>{u.username} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] block">Internal Sales Notes</label>
                 <textarea
                   value={customer.notes}
@@ -280,6 +308,7 @@ const PosScreen = () => {
                     if (!customer.name.trim()) return alert("Customer name is required for warranty tracking.");
                     if (!customer.mobile.trim()) return alert("Mobile number is required for digital receipts.");
                     if (customer.mobile.length < 9) return alert("Please enter a valid mobile number.");
+                    if (!selectedUserId) return alert("Please select the staff member who processed this sale.");
                     handleFinalCheckout();
                   }}
                   className="flex-[2] bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"

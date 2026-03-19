@@ -1,12 +1,32 @@
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const db = require('./db');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Increase limit for PDF base64
+app.use(express.json({ limit: '10mb' }));
+
+const JWT_SECRET = process.env.JWT_SECRET || 'nestor-works-luxury-secret-key-2026';
+
+// --- AUTH MIDDLEWARE ---
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'System access denied. Please re-authenticate.' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) { res.status(403).json({ error: 'Session expired or invalid token.' }); }
+};
+
+const adminOnly = (req, res, next) => {
+  if (req.user?.role !== 'Admin') return res.status(403).json({ error: 'Clearance level insufficient for this operation.' });
+  next();
+};
 
 // Helper function to get or create brand/category ID
 const ensureEntity = async (table, name) => {
@@ -48,6 +68,66 @@ app.post('/api/categories', async (req, res) => {
     const { rows } = await db.query('INSERT INTO categories (name) VALUES ($1) RETURNING *', [name]);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// --- USERS ---
+app.get('/api/users', authenticate, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id, username, role, created_at FROM users ORDER BY username ASC');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+app.post('/api/users', authenticate, adminOnly, async (req, res) => {
+  const { username, password, role } = req.body;
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const { rows } = await db.query(
+      'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING id, username, role',
+      [username, hashedPassword, role || 'Employee']
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: 'User already exists or database error' }); }
+});
+
+app.put('/api/users/:id', authenticate, adminOnly, async (req, res) => {
+  const { id } = req.params;
+  const { username, password, role } = req.body;
+  try {
+    let query = 'UPDATE users SET username=$1, role=$2 WHERE id=$3 RETURNING id, username, role';
+    let params = [username, role, id];
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      query = 'UPDATE users SET username=$1, password=$2, role=$3 WHERE id=$4 RETURNING id, username, role';
+      params = [username, hashedPassword, role, id];
+    }
+    const { rows } = await db.query(query, params);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: 'Error updating user' }); }
+});
+
+app.delete('/api/users/:id', authenticate, adminOnly, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('DELETE FROM users WHERE id = $1', [id]);
+    res.status(204).send();
+  } catch (err) { res.status(500).json({ error: 'Error deleting user' }); }
+});
+
+// --- AUTHENTICATION ---
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const { rows } = await db.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (rows.length === 0) return res.status(401).json({ error: 'Identity collision: User not found.' });
+    
+    const user = rows[0];
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ error: 'Security breach: Invalid passkey.' });
+
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+  } catch (err) { res.status(500).json({ error: 'Secure gate failure.' }); }
 });
 
 // Get all products (with pagination and filtering)
@@ -195,8 +275,8 @@ app.delete('/api/products/:id', async (req, res) => {
 });
 
 // Process sale
-app.post('/api/sales', async (req, res) => {
-  const { items, customer_name, customer_mobile, customer_address, notes } = req.body; 
+app.post('/api/sales', authenticate, async (req, res) => {
+  const { items, customer_name, customer_mobile, customer_address, notes, sold_by } = req.body; 
   if (!items || items.length === 0) return res.status(400).json({ error: 'Sale must contain items' });
 
   try {
@@ -211,11 +291,11 @@ app.post('/api/sales', async (req, res) => {
     }
     const profit = total_amount - total_cost;
 
-    // Create sale record with customer info
+    // Create sale record with customer info and staff attribution
     const saleResult = await db.query(
-      `INSERT INTO sales (total_amount, total_cost, profit, customer_name, customer_mobile, customer_address, notes) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [total_amount, total_cost, profit, customer_name, customer_mobile, customer_address, notes]
+      `INSERT INTO sales (total_amount, total_cost, profit, customer_name, customer_mobile, customer_address, notes, sold_by) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [total_amount, total_cost, profit, customer_name, customer_mobile, customer_address, notes, sold_by || null]
     );
     const saleId = saleResult.rows[0].id;
 
@@ -240,18 +320,24 @@ app.post('/api/sales', async (req, res) => {
   }
 });
 
-// Get daily sales report
-app.get('/api/reports/daily', async (req, res) => {
+// Get periodic summary reports
+app.get('/api/reports/summary', authenticate, adminOnly, async (req, res) => {
+  const { period = 'daily' } = req.query; // daily, weekly, monthly
+  
+  let groupBy = "TO_CHAR(created_at, 'YYYY-MM-DD')";
+  if (period === 'weekly') groupBy = "TO_CHAR(created_at, 'IYYY-IW')"; // ISO Week
+  if (period === 'monthly') groupBy = "TO_CHAR(created_at, 'YYYY-MM')";
+  
   try {
     const { rows } = await db.query(`
       SELECT 
-        TO_CHAR(created_at, 'YYYY-MM-DD') as sale_date,
+        ${groupBy} as period,
         COUNT(id) as total_transactions,
-        SUM(total_amount) as total_revenue,
-        SUM(profit) as total_profit
+        SUM(total_amount) as total_revenue
       FROM sales
-      GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
-      ORDER BY sale_date DESC
+      GROUP BY ${groupBy}
+      ORDER BY period DESC
+      LIMIT 20
     `);
     res.json(rows);
   } catch (err) {
@@ -260,14 +346,15 @@ app.get('/api/reports/daily', async (req, res) => {
   }
 });
 
-// Get detailed report for a specific date
-app.get('/api/reports/detailed', async (req, res) => {
+// Get// Detailed report for a specific day
+app.get('/api/reports/detailed', authenticate, async (req, res) => {
   const { date } = req.query;
   try {
     let query = `
       SELECT 
         s.id, s.total_amount, s.profit, s.created_at, s.status,
         s.customer_name, s.customer_mobile, s.customer_address, s.notes,
+        u.username as sold_by_name,
         (SELECT JSON_BUILD_OBJECT(
           'id', ex.id,
           'old_name', po.name, 
@@ -290,6 +377,7 @@ app.get('/api/reports/detailed', async (req, res) => {
           'is_already_returned', COALESCE(ex_ret.returned_qty, 0) >= si.quantity
         )) FILTER (WHERE p.id IS NOT NULL), '[]') as items
       FROM sales s
+      LEFT JOIN users u ON s.sold_by = u.id
       LEFT JOIN sale_items si ON s.id = si.sale_id
       LEFT JOIN products p ON si.product_id = p.id
       LEFT JOIN (
@@ -305,7 +393,7 @@ app.get('/api/reports/detailed', async (req, res) => {
       params.push(date);
     }
     
-    query += ` GROUP BY s.id ORDER BY s.created_at DESC`;
+    query += ` GROUP BY s.id, u.username ORDER BY s.created_at DESC`;
     
     const { rows } = await db.query(query, params);
     res.json(rows);
@@ -383,7 +471,7 @@ app.get('/api/sales/:id', async (req, res) => {
 });
 
 // Process product exchange (with audit trail)
-app.post('/api/exchanges', async (req, res) => {
+app.post('/api/exchanges', authenticate, async (req, res) => {
   const { original_sale_id, returned_product_id, new_product_id, qty = 1 } = req.body;
   
   try {

@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, Package, BarChart3, Menu, X, RefreshCw, Receipt, Settings, LayoutGrid } from 'lucide-react';
+import { ShoppingCart, Package, BarChart3, Menu, X, RefreshCw, Receipt, Settings, LayoutGrid, Shield, User, LogOut } from 'lucide-react';
 import PosScreen from './pages/PosScreen';
 import ProductManagement from './pages/ProductManagement';
 import Reports from './pages/Reports';
 import Exchanges from './pages/Exchanges';
 import Invoices from './pages/Invoices';
 import MetaDataManagement from './pages/MetaDataManagement';
+import UserManagement from './pages/UserManagement';
+import Login from './pages/Login';
 import { CartProvider } from './context/CartContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Navigate } from 'react-router-dom';
 
 const SidebarLink = ({ to, icon: Icon, label, onClick }) => {
   const location = useLocation();
@@ -28,13 +32,26 @@ const SidebarLink = ({ to, icon: Icon, label, onClick }) => {
   );
 };
 
-function App() {
+function AppContent() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { isAuthenticated, user, logout, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-blue-500 font-black animate-pulse uppercase tracking-[0.3em]">Auditing Identity...</div>;
+
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/login" />} />
+      </Routes>
+    );
+  }
+
+  const isAdmin = user?.role === 'Admin';
 
   return (
-    <CartProvider>
-      <Router>
-        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 text-gray-100">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 text-gray-100">
 
           {/* Mobile Header */}
           <header className="md:hidden bg-gray-950 border-b border-gray-800 p-4 flex justify-between items-center sticky top-0 z-50">
@@ -42,9 +59,12 @@ function App() {
               <Package size={20} />
               <span>Nestor Works</span>
             </h1>
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-gray-400">
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={logout} className="text-gray-500 hover:text-red-500"><LogOut size={20} /></button>
+              <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-gray-400">
+                {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
+            </div>
           </header>
 
           {/* Sidebar (Desktop & Mobile Overlay) */}
@@ -63,13 +83,30 @@ function App() {
               <SidebarLink to="/" icon={ShoppingCart} label="POS Screen" onClick={() => setIsMenuOpen(false)} />
               <SidebarLink to="/exchanges" icon={RefreshCw} label="Exchanges" onClick={() => setIsMenuOpen(false)} />
               <SidebarLink to="/products" icon={Package} label="Inventory" onClick={() => setIsMenuOpen(false)} />
-              <SidebarLink to="/reports" icon={BarChart3} label="Analytics" onClick={() => setIsMenuOpen(false)} />
+              {isAdmin && <SidebarLink to="/reports" icon={BarChart3} label="Analytics" onClick={() => setIsMenuOpen(false)} />}
               <SidebarLink to="/invoices" icon={Receipt} label="Bills Hub" onClick={() => setIsMenuOpen(false)} />
+              {isAdmin && <SidebarLink to="/users" icon={Shield} label="Staff Control" onClick={() => setIsMenuOpen(false)} />}
               <SidebarLink to="/metadata" icon={LayoutGrid} label="Taxonomy" onClick={() => setIsMenuOpen(false)} />
             </nav>
 
-            <div className="p-4 border-t border-gray-800 text-[10px] text-gray-600 text-center">
-              Nestor Works POS &bull; v1.0
+            <div className="mt-auto border-t border-gray-800">
+               <div className="px-4 py-4 flex items-center justify-between group">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center shrink-0">
+                      <User size={16} />
+                    </div>
+                    <div className="truncate">
+                      <p className="text-[10px] font-black text-white truncate">{user.username}</p>
+                      <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">{user.role}</p>
+                    </div>
+                  </div>
+                  <button onClick={logout} className="p-2 text-gray-600 hover:text-red-500 transition-colors" title="SECURE LOGOUT">
+                    <LogOut size={18} />
+                  </button>
+               </div>
+               <div className="p-4 bg-gray-900/50 text-[10px] text-gray-600 text-center uppercase tracking-tighter">
+                Nestor Works POS &bull; v1.0
+               </div>
             </div>
           </aside>
 
@@ -89,12 +126,25 @@ function App() {
               <Route path="/metadata" element={<MetaDataManagement />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/exchanges" element={<Exchanges />} />
-              <Route path="/reports" element={<Reports />} />
+              {isAdmin && <Route path="/reports" element={<Reports />} />}
+              {isAdmin && <Route path="/users" element={<UserManagement />} />}
+              <Route path="/login" element={<Navigate to="/" />} />
+              <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </main>
         </div>
-      </Router>
-    </CartProvider>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <CartProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </CartProvider>
+    </AuthProvider>
   );
 }
 

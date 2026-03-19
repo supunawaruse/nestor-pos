@@ -161,6 +161,7 @@ const Reports = () => {
   const [dailyStats, setDailyStats] = useState([]);
   const [detailedSales, setDetailedSales] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null); // 'YYYY-MM-DD'
+  const [reportPeriod, setReportPeriod] = useState('daily'); // daily, weekly, monthly
   const [loading, setLoading] = useState(true);
   const [modalSaleId, setModalSaleId] = useState(null);
 
@@ -173,8 +174,8 @@ const Reports = () => {
   const ledgerItemsPerPage = 10;
 
   useEffect(() => {
-    fetchDailySummary();
-  }, []);
+    fetchSummary();
+  }, [reportPeriod]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -183,10 +184,10 @@ const Reports = () => {
     }
   }, [selectedDate]);
 
-  const fetchDailySummary = async () => {
+  const fetchSummary = async () => {
     setLoading(true);
     try {
-      const { data } = await salesApi.getDailyReport();
+      const { data } = await salesApi.getSummaryReport(reportPeriod);
       setDailyStats(data);
     } catch (err) { console.error(err); } 
     finally { setLoading(false); }
@@ -203,9 +204,8 @@ const Reports = () => {
 
   const totals = dailyStats.reduce((acc, curr) => ({
     revenue: acc.revenue + Number(curr.total_revenue),
-    profit: acc.profit + Number(curr.total_profit),
     transactions: acc.transactions + Number(curr.total_transactions)
-  }), { revenue: 0, profit: 0, transactions: 0 });
+  }), { revenue: 0, transactions: 0 });
 
   const downloadBill = async (saleId) => {
     try {
@@ -445,27 +445,35 @@ const Reports = () => {
             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-hover:text-blue-500 transition-colors" size={20} />
             <input type="date" onChange={(e) => e.target.value && setSelectedDate(e.target.value)} className="bg-gray-800 border border-gray-700 rounded-xl pl-12 pr-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all cursor-pointer shadow-lg" title="Jump to date" />
           </div>
-          <button onClick={fetchDailySummary} className="bg-gray-800 hover:bg-gray-700 text-blue-400 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-gray-700 shadow-lg">
+          <div className="flex bg-gray-900 border border-gray-800 rounded-xl p-1 shadow-lg">
+            {['daily', 'weekly', 'monthly'].map(p => (
+              <button
+                key={p}
+                onClick={() => setReportPeriod(p)}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${
+                  reportPeriod === p ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <button onClick={fetchSummary} className="bg-gray-800 hover:bg-gray-700 text-blue-400 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-gray-700 shadow-lg">
             <RefreshCcw size={20} className={loading ? 'animate-spin' : ''} /> REFRESH ENGINE
           </button>
         </div>
       </header>
       
       {/* Rest of the Stats logic same as before */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-12">
         <div className="bg-gray-850 p-8 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden group">
           <TrendingUp className="text-blue-600/10 absolute -right-4 -bottom-4 group-hover:scale-125 transition-transform duration-500" size={140} />
-          <h3 className="text-gray-500 font-bold uppercase text-[10px] mb-4 tracking-widest">Total Cumulative Revenue</h3>
+          <h3 className="text-gray-500 font-bold uppercase text-[10px] mb-4 tracking-widest">Total Cumulative Revenue ({reportPeriod})</h3>
           <p className="text-4xl font-black text-white">LKR {Math.round(totals.revenue).toLocaleString()}</p>
         </div>
         <div className="bg-gray-850 p-8 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden group">
-          <DollarSign className="text-green-600/10 absolute -right-4 -bottom-4 group-hover:scale-125 transition-transform duration-500" size={140} />
-          <h3 className="text-gray-500 font-bold uppercase text-[10px] mb-4 tracking-widest">Gross Merchant Profit</h3>
-          <p className="text-4xl font-black text-green-400">LKR {Math.round(totals.profit).toLocaleString()}</p>
-        </div>
-        <div className="bg-gray-850 p-8 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden group">
           <Calendar className="text-purple-600/10 absolute -right-4 -bottom-4 group-hover:scale-125 transition-transform duration-500" size={140} />
-          <h3 className="text-gray-500 font-bold uppercase text-[10px] mb-4 tracking-widest">Lifetime Transactions</h3>
+          <h3 className="text-gray-500 font-bold uppercase text-[10px] mb-4 tracking-widest">Cumulative Transactions ({reportPeriod})</h3>
           <p className="text-4xl font-black text-white">{totals.transactions}</p>
         </div>
       </div>
@@ -474,7 +482,7 @@ const Reports = () => {
         <header className="px-8 py-6 border-b border-gray-800 bg-gray-800/30">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-tighter">
-              <Calendar size={24} className="text-blue-500" /> Daily Sales Journal
+              <Calendar size={24} className="text-blue-500" /> {reportPeriod} Sales Journal
             </h2>
             <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Page {currentPage} of {totalPages || 1}</span>
           </div>
@@ -486,13 +494,17 @@ const Reports = () => {
           ) : dailyStats.length === 0 ? (
             <div className="p-20 text-center text-gray-500 italic">No historical records found.</div>
           ) : currentDays.map((day) => {
-            const dateStr = day.sale_date; 
+            const dateStr = day.period; 
+            const displayDate = reportPeriod === 'monthly' ? dateStr : 
+                             reportPeriod === 'weekly' ? `Week ${dateStr.split('-')[1]} of ${dateStr.split('-')[0]}` :
+                             new Date(day.period).toLocaleDateString(undefined, { dateStyle: 'long' });
+
             return (
-              <div key={dateStr} onClick={() => setSelectedDate(dateStr)} className="p-6 flex items-center justify-between hover:bg-blue-900/10 transition-all cursor-pointer group active:bg-blue-900/20">
+              <div key={dateStr} onClick={() => reportPeriod === 'daily' && setSelectedDate(dateStr)} className={`p-6 flex items-center justify-between transition-all group ${reportPeriod === 'daily' ? 'hover:bg-blue-900/10 cursor-pointer active:bg-blue-900/20' : ''}`}>
                 <div className="flex items-center gap-6">
                   <div className="bg-gray-900 p-5 rounded-2xl text-gray-600 group-hover:text-blue-400 group-hover:bg-blue-900/30 group-hover:scale-110 transition-all shadow-inner"><Calendar size={28} /></div>
                   <div>
-                    <h4 className="font-bold text-2xl text-white group-hover:text-blue-100 transition-colors">{new Date(day.sale_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</h4>
+                    <h4 className="font-bold text-2xl text-white group-hover:text-blue-100 transition-colors">{displayDate}</h4>
                     <p className="text-sm font-bold text-gray-500 bg-gray-900/50 w-fit px-3 py-1 rounded-full mt-1">{day.total_transactions} transactions completed</p>
                   </div>
                 </div>
@@ -501,7 +513,7 @@ const Reports = () => {
                     <p className="text-[10px] text-gray-500 font-black uppercase mb-1 tracking-[0.2em]">Net Sales</p>
                     <p className="text-2xl font-black text-white group-hover:text-green-400 transition-colors">LKR {Math.round(day.total_revenue).toLocaleString()}</p>
                   </div>
-                  <ChevronRight size={28} className="text-gray-700 group-hover:text-blue-500 group-hover:translate-x-2 transition-all" />
+                  {reportPeriod === 'daily' && <ChevronRight size={28} className="text-gray-700 group-hover:text-blue-500 group-hover:translate-x-2 transition-all" />}
                 </div>
               </div>
             );
